@@ -228,7 +228,7 @@ const CSS = `
 const listItems = articles
   .map(
     (a) =>
-      `<a class="nav-item" href="${a.page}"><span class="nav-date">${a.date}</span><span class="nav-title">${esc(a.meta.title)}${a.meta.subtitle ? " · " + esc(a.meta.subtitle) : ""}</span></a>`
+      `<a class="nav-item" href="${a.page}"><span class="nav-date">${a.meta.date}</span><span class="nav-title">${esc(a.meta.title)}${a.meta.subtitle ? " · " + esc(a.meta.subtitle) : ""}</span></a>`
   )
   .join("\n");
 
