@@ -256,12 +256,16 @@ function buildPostPage(a, i) {
   const newer = articles[i - 1]; // 列表按新到旧，i-1 是更新的一篇
   const older = articles[i + 1]; // i+1 是更早的一篇
 
+  // 文章页自己就在 posts/ 目录里，所以指向兄弟文章的链接必须去掉 "posts/" 前缀，
+  // 否则浏览器会解析成 posts/posts/xxx.html → 404（目录页里则要保留前缀）
+  const sibling = (art) => art.page.replace(/^posts\//, "");
+
   const pager = [
     older
-      ? `<a href="${older.page}"><span class="dir">← 更早一篇</span><span class="ellipsis">${esc(older.meta.title)}${older.meta.subtitle ? " · " + esc(older.meta.subtitle) : ""}</span></a>`
+      ? `<a href="${sibling(older)}"><span class="dir">← 更早一篇</span><span class="ellipsis">${esc(older.meta.title)}${older.meta.subtitle ? " · " + esc(older.meta.subtitle) : ""}</span></a>`
       : `<a href="../index.html"><span class="dir">← 已是最早一篇</span><span class="ellipsis">返回目录</span></a>`,
     newer
-      ? `<a href="${newer.page}"><span class="dir">更新一篇 →</span><span class="ellipsis">${esc(newer.meta.title)}${newer.meta.subtitle ? " · " + esc(newer.meta.subtitle) : ""}</span></a>`
+      ? `<a href="${sibling(newer)}"><span class="dir">更新一篇 →</span><span class="ellipsis">${esc(newer.meta.title)}${newer.meta.subtitle ? " · " + esc(newer.meta.subtitle) : ""}</span></a>`
       : `<a href="../index.html"><span class="dir">已是最新一篇</span><span class="ellipsis">返回目录</span></a>`,
   ].join("\n");
 
