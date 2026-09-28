@@ -348,6 +348,53 @@ function buildPostPage(a, i) {
 </html>`;
 }
 
+// ---------- 404 页（URL 打错时的救生圈） ----------
+// GitHub Pages 的 project page 下，路径多一段少一段都会命中这里。
+// 内联一小段 JS 把人送回目录页；站点部署在根目录时（CloudStudio）也能正确回到 /。
+const notFoundPage = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>页面不存在 · PyTorch 每日一课</title>
+<style>${CSS}
+  .nf { text-align: center; padding: 40px 8px 60px; }
+  .nf h2 { font-size: 46px; margin: 0 0 10px; color: var(--accent); }
+  .nf p { color: var(--muted); font-size: 14px; }
+  .nf a.btn {
+    display: inline-block; margin-top: 20px; padding: 13px 26px;
+    background: var(--accent); color: #fff; border-radius: 10px;
+    text-decoration: none; font-weight: 600; font-size: 15px;
+  }
+  .nf code {
+    background: var(--code-bg); padding: 3px 7px; border-radius: 5px;
+    font-size: 12.5px; word-break: break-all;
+  }
+</style>
+</head>
+<body>
+<header class="site">
+  <h1>🔥 PyTorch 每日一课</h1>
+</header>
+<div class="wrap nf">
+  <h2>404</h2>
+  <p>这个地址下没有内容——多半是链接里多带了（或少带了）一段路径。</p>
+  <p>正在送你回目录页……没跳过去就点下面：</p>
+  <a class="btn" href="/pytorch-daily/">← 返回目录</a>
+  <p style="margin-top: 28px;">正确地址：<code id="ok"></code></p>
+</div>
+<script>
+  (function () {
+    // GitHub Pages 的 project page 挂在 /pytorch-daily/ 下；部署在根目录时用 /
+    var root = location.pathname.indexOf("/pytorch-daily") === 0 ? "/pytorch-daily/" : "/";
+    document.getElementById("ok").textContent = location.origin + root;
+    document.querySelector(".nf a.btn").href = root;
+    setTimeout(function () { location.replace(root); }, 900);
+  })();
+</script>
+</body>
+</html>`;
+
 // ---------- 写出 ----------
 // 清空旧的构建产物，避免残留旧文件
 fs.rmSync(OUT_DIR, { recursive: true, force: true });
@@ -371,6 +418,7 @@ for (const f of fs.readdirSync(path.join(katexDist, "fonts"))) {
 }
 
 fs.writeFileSync(path.join(OUT_DIR, "index.html"), indexPage);
+fs.writeFileSync(path.join(OUT_DIR, "404.html"), notFoundPage);
 for (let i = 0; i < articles.length; i++) {
   fs.writeFileSync(
     path.join(OUT_DIR, articles[i].page),
