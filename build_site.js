@@ -5,6 +5,7 @@ const fs = require("fs");
 const path = require("path");
 const { marked } = require("marked");
 const hljs = require("highlight.js");
+const katex = require("katex");
 
 const SRC_DIR = __dirname;
 const OUT_DIR = path.join(__dirname, "site");
@@ -44,6 +45,45 @@ const renderer = {
 };
 marked.use({ renderer });
 
+// ---------- 数学公式（构建期用 KaTeX 渲染，页面依旧零 JS 依赖） ----------
+// 关键：必须在 marked 之前把公式摘出来。否则 $x_i$ 里的下划线会被 markdown
+// 当成强调符吃掉（$a_1$ 和 $a_2$ 会配对成 <em>）。
+// 实现方式：先按「代码块 / 行内代码」切分，只在非代码片段里替换公式，
+// 这样代码块里的 $（shell 变量、jQuery 之类）不会被误伤。
+const MATH_SLOT = /[\u0000]M(\d+)[\u0000]/g;
+
+function renderMath(md) {
+  const store = [];
+  const slot = (latex, displayMode) => {
+    let html;
+    try {
+      html = katex.renderToString(latex, {
+        displayMode,
+        throwOnError: false,
+        strict: false,
+        output: "html",
+      });
+    } catch (e) {
+      html = `<code>${esc(latex)}</code>`; // 渲染失败就退化成原文，不让构建挂掉
+    }
+    store.push(html);
+    return `\u0000M${store.length - 1}\u0000`;
+  };
+
+  const parts = md.split(/(```[\s\S]*?```|`[^`\n]*`)/g);
+  for (let i = 0; i < parts.length; i += 2) {
+    // 偶数下标 = 非代码片段（奇数下标是分隔符本身）
+    parts[i] = parts[i]
+      .replace(/\$\$([\s\S]+?)\$\$/g, (_, t) => slot(t, true))
+      .replace(/\$([^$\n]+?)\$/g, (_, t) => slot(t, false));
+  }
+  return { md: parts.join(""), store };
+}
+
+function restoreMath(html, store) {
+  return html.replace(MATH_SLOT, (_, i) => store[Number(i)]);
+}
+
 function extractMeta(html, filename) {
   const date = filename.slice(0, 10);
   const h1 = (html.match(/<h1[^>]*>(.*?)<\/h1>/) || [])[1] || filename;
@@ -55,7 +95,9 @@ function extractMeta(html, filename) {
 
 const articles = files.map((f) => {
   const md = fs.readFileSync(path.join(SRC_DIR, f), "utf-8");
-  const html = marked.parse(md, { gfm: true, breaks: false });
+  const { md: protectedMd, store } = renderMath(md);
+  const rawHtml = marked.parse(protectedMd, { gfm: true, breaks: false });
+  const html = restoreMath(rawHtml, store);
   const meta = extractMeta(html, f);
   // slug 直接复用文件名（YYYY-MM-DD_topic 形式，URL 安全）
   const slug = f.replace(/\.md$/, "").replace(/[^a-z0-9_-]/gi, "");
@@ -222,6 +264,19 @@ const CSS = `
   }
   .pager .dir { display: block; color: var(--muted); font-size: 12px; margin-bottom: 2px; }
   .pager .ellipsis { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* KaTeX：手机上行内公式不撑破版面，独立公式横向可滚 */
+  .katex { font-size: 1.04em; }
+  article .katex-display {
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 4px 2px 6px;
+    margin: 0.9em 0;
+  }
+  article .katex-display::-webkit-scrollbar { height: 4px; }
+  article .katex-display::-webkit-scrollbar-thumb {
+    background: var(--border); border-radius: 2px;
+  }
 `;
 
 // ---------- 目录页（永远轻量，只有列表） ----------
@@ -238,6 +293,7 @@ const indexPage = `<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>PyTorch 每日一课</title>
+<link rel="stylesheet" href="katex/katex.min.css">
 <style>${CSS}</style>
 </head>
 <body>
@@ -275,6 +331,7 @@ function buildPostPage(a, i) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>${esc(a.meta.title)} · PyTorch 每日一课</title>
+<link rel="stylesheet" href="../katex/katex.min.css">
 <style>${CSS}</style>
 </head>
 <body>
@@ -296,6 +353,23 @@ function buildPostPage(a, i) {
 fs.rmSync(OUT_DIR, { recursive: true, force: true });
 fs.mkdirSync(POSTS_DIR, { recursive: true });
 
+// KaTeX 样式与字体：拷进产物目录，走本地相对路径，
+// 既不依赖 CDN，也不需要页面加载任何 JS
+const katexDist = path.dirname(require.resolve("katex/dist/katex.min.css"));
+fs.mkdirSync(path.join(OUT_DIR, "katex", "fonts"), { recursive: true });
+fs.copyFileSync(
+  path.join(katexDist, "katex.min.css"),
+  path.join(OUT_DIR, "katex", "katex.min.css")
+);
+let fontCount = 0;
+for (const f of fs.readdirSync(path.join(katexDist, "fonts"))) {
+  fs.copyFileSync(
+    path.join(katexDist, "fonts", f),
+    path.join(OUT_DIR, "katex", "fonts", f)
+  );
+  fontCount++;
+}
+
 fs.writeFileSync(path.join(OUT_DIR, "index.html"), indexPage);
 for (let i = 0; i < articles.length; i++) {
   fs.writeFileSync(
@@ -305,5 +379,6 @@ for (let i = 0; i < articles.length; i++) {
 }
 
 console.log(
-  `Built site: index.html (TOC) + ${articles.length} post page(s) -> ${OUT_DIR}`
+  `Built site: index.html (TOC) + ${articles.length} post page(s) -> ${OUT_DIR}\n` +
+    `KaTeX: katex.min.css + ${fontCount} font files copied`
 );

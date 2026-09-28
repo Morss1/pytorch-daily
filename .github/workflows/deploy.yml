@@ -28,7 +28,7 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
-        run: npm install marked highlight.js
+        run: npm install marked highlight.js katex
 
       - name: Build site
         run: node build_site.js
